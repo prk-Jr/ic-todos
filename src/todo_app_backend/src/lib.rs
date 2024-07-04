@@ -1,6 +1,7 @@
 use candid::CandidType;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
+use std::collections::BTreeMap;
 
 thread_local! {
     static STATE: RefCell<Todos> = RefCell::new(Todos::default());
@@ -8,7 +9,7 @@ thread_local! {
 
 #[derive(Default)]
 struct Todos {
-    todos: Vec<Todo>,
+    todos: BTreeMap<u32, Todo>,
 }
 
 #[derive(Clone, CandidType, Deserialize, Serialize)]
@@ -20,32 +21,27 @@ struct Todo {
 
 impl Todos {
     fn add_todo(&mut self, text: String) -> u32 {
-        let id = self.todos.len() as u32;
-        self.todos.push(Todo {
-            id: id,
-            text,
-            completed: false,
-        });
+        let id = match self.todos.last_key_value() {
+            Some(todo) => todo.0 + 1,
+            None => 1,
+        };
+        self.todos.insert(
+            id,
+            Todo {
+                id: id,
+                text,
+                completed: false,
+            },
+        );
         id
     }
 
     fn remove_todo_by_id(&mut self, id: u32) -> Option<Todo> {
-        let index = self.todos.iter().position(|todo| todo.id == id);
-
-        match index {
-            Some(index) => {
-                let todo = self.todos.remove(index);
-                Some(todo)
-            }
-            None => {
-                ic_cdk::println!("Todo not found");
-                None
-            }
-        }
+        self.todos.remove(&id)
     }
 
     fn get_todo_by_id(&self, id: u32) -> Option<Todo> {
-        self.todos.iter().find(|todo| todo.id == id).cloned()
+        self.todos.get(&id).cloned()
     }
 
     fn get_todos_paginates(&self, offset: u32, limit: u32) -> Vec<Todo> {
@@ -53,7 +49,7 @@ impl Todos {
             .iter()
             .skip(offset as usize)
             .take(limit as usize)
-            .map(|todo| todo.clone())
+            .map(|todo| todo.1.clone())
             .collect()
     }
 
@@ -63,22 +59,38 @@ impl Todos {
         text: Option<String>,
         completed: Option<bool>,
     ) -> Option<Todo> {
-        let index = self.todos.iter().position(|todo| todo.id == id);
-        match index {
-            Some(index) => {
+        let todo = self.todos.get_mut(&id);
+        match todo {
+            Some(todo) => {
                 if let Some(text) = text {
-                    self.todos[index].text = text;
+                    todo.text = text;
                 }
                 if let Some(completed) = completed {
-                    self.todos[index].completed = completed;
+                    todo.completed = completed;
                 }
-                Some(self.todos[index].clone())
+                Some(todo.clone())
             }
             None => {
                 ic_cdk::println!("Todo not found");
                 None
             }
         }
+        // let index = self.todos.iter().position(|todo| todo.id == id);
+        // match index {
+        //     Some(index) => {
+        //         if let Some(text) = text {
+        //             self.todos[index].text = text;
+        //         }
+        //         if let Some(completed) = completed {
+        //             self.todos[index].completed = completed;
+        //         }
+        //         Some(self.todos[index].clone())
+        //     }
+        //     None => {
+        //         ic_cdk::println!("Todo not found");
+        //         None
+        //     }
+        // }
     }
 }
 
